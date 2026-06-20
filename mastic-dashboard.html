@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trimseal — Business Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f8;
+    --surface:#ffffff;
+    --surface-2:#fafbfc;
+    --line:#e3e7ec;
+    --line-strong:#d3d9e0;
+    --ink:#1e2a32;
+    --ink-2:#5a6772;
+    --ink-3:#8a96a0;
+    --bead:#2b6e7a;          /* primary — the "bead" of sealant; the domestic/growth colour */
+    --bead-soft:#e3f0f1;
+    --commercial:#9aa7b1;    /* the side being wound down — deliberately quiet */
+    --commercial-soft:#eef1f3;
+    --good:#3f8f6a; --good-soft:#e6f1ec;
+    --warn:#b9821f; --warn-soft:#f7eed9;
+    --bad:#c0563f;  --bad-soft:#f7e6e1;
+    --radius:10px;
+    --radius-sm:7px;
+    --shadow:0 1px 2px rgba(30,42,50,.04), 0 2px 8px rgba(30,42,50,.04);
+    --font:"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--font);
+    background:var(--bg);
+    color:var(--ink);
+    font-size:14px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .tnum{font-variant-numeric:tabular-nums}
+  a{color:var(--bead);text-decoration:none}
+
+  /* ---------- App shell ---------- */
+  .app{display:grid;grid-template-columns:224px 1fr;min-height:100vh}
+  .sidebar{
+    background:var(--surface);
+    border-right:1px solid var(--line);
+    display:flex;flex-direction:column;
+    position:sticky;top:0;height:100vh;
+  }
+  .brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+  .brand .mark{display:flex;align-items:center;gap:10px}
+  .brand .bead-dot{width:26px;height:26px;border-radius:7px;background:var(--bead);position:relative;flex:none}
+  .brand .bead-dot::after{content:"";position:absolute;left:6px;right:6px;top:50%;height:3px;border-radius:3px;background:#fff;transform:translateY(-50%)}
+  .brand h1{font-size:15px;margin:0;font-weight:600;letter-spacing:-.2px}
+  .brand .sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:.3px}
+
+  .nav{padding:10px 10px;flex:1;overflow-y:auto}
+  .nav button{
+    appearance:none;border:0;background:none;width:100%;text-align:left;
+    font:inherit;color:var(--ink-2);cursor:pointer;
+    padding:9px 12px 9px 14px;border-radius:var(--radius-sm);
+    display:flex;align-items:center;gap:9px;margin:1px 0;position:relative;
+    transition:background .12s, color .12s;
+  }
+  .nav button:hover{background:var(--surface-2);color:var(--ink)}
+  .nav button.active{background:var(--bead-soft);color:var(--bead);font-weight:600}
+  .nav button.active::before{content:"";position:absolute;left:2px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--bead)}
+  .nav .count{margin-left:auto;font-size:11px;background:var(--line);color:var(--ink-2);border-radius:20px;padding:1px 7px;font-weight:600}
+  .nav button.active .count{background:#fff;color:var(--bead)}
+  .nav .count.alert{background:var(--bad-soft);color:var(--bad)}
+
+  .side-foot{border-top:1px solid var(--line);padding:12px 14px;font-size:12px;color:var(--ink-3)}
+  .side-foot .row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .side-foot button{font-size:11.5px;padding:5px 9px}
+  .store-note{font-size:10.5px;line-height:1.4}
+
+  /* ---------- Main ---------- */
+  .main{padding:24px 28px 60px;max-width:1180px}
+  .view{display:none}
+  .view.active{display:block}
+  .page-head{margin-bottom:18px}
+  .page-head h2{font-size:21px;margin:0 0 3px;font-weight:600;letter-spacing:-.3px}
+  .page-head p{margin:0;color:var(--ink-2);font-size:13px;max-width:62ch}
+
+  /* mobile topbar */
+  .topbar{display:none}
+
+  /* ---------- KPI cards ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:18px}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 15px;box-shadow:var(--shadow)}
+  .kpi .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-3);font-weight:600}
+  .kpi .val{font-size:25px;font-weight:600;margin-top:6px;letter-spacing:-.5px}
+  .kpi .note{font-size:11.5px;color:var(--ink-2);margin-top:3px}
+  .kpi.star{background:linear-gradient(180deg,#fff, var(--bead-soft));border-color:#cfe3e5}
+  .kpi.star .val{color:var(--bead)}
+  .kpi .note .up{color:var(--good);font-weight:600}
+  .kpi .note .down{color:var(--bad);font-weight:600}
+
+  /* ---------- Panels ---------- */
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
+  .panel-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .panel-head h3{font-size:14.5px;margin:0;font-weight:600}
+  .panel-head .desc{font-size:12px;color:var(--ink-3);margin-left:0}
+  .panel-head .spacer{flex:1}
+  .panel-body{padding:16px}
+  .panel.hero .panel-head{border-bottom:0;padding-bottom:0}
+  .panel.hero{border-top:3px solid var(--bead)}
+
+  .grid-2{display:grid;grid-template-columns:1.55fr 1fr;gap:18px;align-items:start}
+
+  /* ---------- Tables ---------- */
+  .tbl-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-3);font-weight:600;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .muted{color:var(--ink-3)}
+  .empty{padding:26px 16px;text-align:center;color:var(--ink-3);font-size:13px}
+
+  /* ---------- Pills / tags ---------- */
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.8}
+  .pill.good{background:var(--good-soft);color:var(--good)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.bad{background:var(--bad-soft);color:var(--bad)}
+  .pill.neutral{background:var(--line);color:var(--ink-2)}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;background:var(--bead-soft);color:var(--bead);font-weight:600}
+  .tag.com{background:var(--commercial-soft);color:#5f6c76}
+
+  /* ---------- Buttons / forms ---------- */
+  .btn{appearance:none;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:var(--radius-sm);
+       padding:7px 13px;border:1px solid var(--line-strong);background:#fff;color:var(--ink);transition:.12s}
+  .btn:hover{border-color:var(--ink-3);background:var(--surface-2)}
+  .btn.primary{background:var(--bead);border-color:var(--bead);color:#fff}
+  .btn.primary:hover{background:#235a64;border-color:#235a64}
+  .btn.sm{padding:4px 9px;font-size:11.5px}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--ink-2)}
+  .btn.ghost:hover{background:var(--surface-2);color:var(--ink)}
+  .btn.danger{color:var(--bad);border-color:transparent}
+  .btn.danger:hover{background:var(--bad-soft);border-color:var(--bad-soft)}
+
+  .form{display:flex;flex-wrap:wrap;gap:9px;align-items:flex-end;padding:14px 16px;background:var(--surface-2);border-top:1px solid var(--line)}
+  .fld{display:flex;flex-direction:column;gap:4px}
+  .fld label{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);font-weight:600}
+  .fld input,.fld select{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:#fff;color:var(--ink)}
+  .fld input:focus,.fld select:focus{outline:2px solid var(--bead);outline-offset:0;border-color:var(--bead)}
+  .fld.grow{flex:1;min-width:140px}
+  .fld input[type=number]{width:104px}
+  .fld input[type=date]{width:148px}
+
+  *:focus-visible{outline:2px solid var(--bead);outline-offset:2px}
+
+  /* ---------- Alerts strip ---------- */
+  .alerts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+  .alert{border:1px solid var(--line);border-left:3px solid var(--ink-3);border-radius:var(--radius-sm);padding:11px 13px;background:#fff}
+  .alert.bad{border-left-color:var(--bad)}
+  .alert.warn{border-left-color:var(--warn)}
+  .alert.good{border-left-color:var(--good)}
+  .alert .a-lab{font-size:11px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .alert .a-val{font-size:17px;font-weight:600;margin:3px 0 1px}
+  .alert .a-sub{font-size:12px;color:var(--ink-2)}
+  .alert a{font-size:11.5px;font-weight:600}
+
+  /* ---------- Lead source bars ---------- */
+  .lsrc{display:flex;flex-direction:column;gap:9px}
+  .lsrc .row{display:grid;grid-template-columns:130px 1fr 54px;align-items:center;gap:10px;font-size:12.5px}
+  .lsrc .bar{height:8px;border-radius:6px;background:var(--line);overflow:hidden}
+  .lsrc .bar span{display:block;height:100%;border-radius:6px;background:var(--bead)}
+  .lsrc .amt{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2);font-weight:600}
+
+  /* ---------- Mix chart ---------- */
+  .mixwrap{display:flex;flex-direction:column;gap:6px}
+  .chart svg{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--ink-2);padding:0 4px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+  /* ---------- Weather ---------- */
+  .wx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .wx-card{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .wx-card .wx-head{display:flex;align-items:center;gap:8px;padding:11px 13px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+  .wx-card .wx-head strong{font-size:13.5px}
+  .wx-day{display:grid;grid-template-columns:62px 1fr auto;gap:8px;align-items:center;padding:8px 13px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .wx-day:last-child{border-bottom:0}
+  .wx-day .d{font-weight:600}
+  .wx-day .meta{color:var(--ink-2);font-size:11.5px}
+  .wx-loading,.wx-error{padding:16px 13px;font-size:12.5px;color:var(--ink-2)}
+  .wx-error{color:var(--bad)}
+
+  /* ---------- Gallery ---------- */
+  .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .gal-card{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .gal-imgs{display:grid;grid-template-columns:1fr 1fr;gap:0;background:var(--line)}
+  .gal-imgs figure{margin:0;background:var(--surface-2)}
+  .gal-imgs img{width:100%;height:120px;object-fit:cover;display:block}
+  .gal-imgs .ph{height:120px;display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:11px}
+  .gal-imgs figcaption{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);text-align:center;padding:3px}
+  .gal-meta{padding:10px 12px}
+  .gal-meta .t{font-weight:600;font-size:13px}
+  .gal-meta .c{font-size:12px;color:var(--ink-2);margin-top:2px}
+
+  .inline-note{font-size:12px;color:var(--ink-3);margin:-6px 0 14px;max-width:64ch}
+
+  @media (max-width:920px){
+    .app{grid-template-columns:1fr}
+    .sidebar{position:static;height:auto;flex-direction:column}
+    .nav{display:flex;overflow-x:auto;padding:8px;gap:4px}
+    .nav button{white-space:nowrap;width:auto;padding:8px 12px}
+    .nav button.active::before{display:none}
+    .nav .count{display:none}
+    .side-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .side-foot .row{margin:0}
+    .store-note{flex:1}
+    .grid-2{grid-template-columns:1fr}
+    .main{padding:18px 16px 50px}
+    .brand{display:flex;justify-content:space-between;align-items:center}
+  }
+  /* ---------- Outreach + Planning ---------- */
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{appearance:none;font:inherit;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);border-radius:20px;padding:5px 12px}
+  .chip:hover{border-color:var(--ink-3)}
+  .chip.active{background:var(--bead);border-color:var(--bead);color:#fff}
+  .chip .n{opacity:.7;margin-left:4px}
+  .search-in{font:inherit;font-size:13px;padding:7px 11px;border:1px solid var(--line-strong);border-radius:20px;min-width:180px}
+  .search-in:focus{outline:2px solid var(--bead);border-color:var(--bead)}
+  #prospectMap,#planningMap{height:330px;width:100%;border-radius:var(--radius);border:1px solid var(--line);margin-bottom:16px;z-index:0}
+  .map-note{font-size:12px;color:var(--ink-3);padding:14px;border:1px dashed var(--line-strong);border-radius:var(--radius);margin-bottom:16px;line-height:1.5}
+  .inp-mini{font:inherit;font-size:12.5px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;width:100%;background:#fff}
+  .inp-mini:focus{outline:2px solid var(--bead);border-color:var(--bead)}
+  select.inp-mini{padding:5px 4px}
+  .pstatus{font-weight:600}
+  .pstatus[data-v="To contact"]{color:var(--ink-2)}
+  .pstatus[data-v="Contacted"]{color:var(--warn)}
+  .pstatus[data-v="Quoted"]{color:var(--bead)}
+  .pstatus[data-v="Won"]{color:var(--good)}
+  .pstatus[data-v="Not now"],.pstatus[data-v="Dead"]{color:var(--ink-3)}
+  .pstatus[data-v="Spotted"]{color:var(--ink-2)}
+  .plan-card{border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px;margin-bottom:10px;background:#fff}
+  .plan-card .pc-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .plan-card .pc-addr{font-weight:600;font-size:13.5px}
+  .plan-card .pc-desc{font-size:12.5px;color:var(--ink-2);margin:5px 0 8px;line-height:1.5}
+  .plan-card .pc-meta{font-size:11.5px;color:var(--ink-3);display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .plan-results-head{font-size:12.5px;color:var(--ink-2);margin-bottom:10px}
+  .badge{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--bead-soft);color:var(--bead);white-space:nowrap}
+  .badge.lg{background:var(--warn-soft);color:var(--warn)}
+  .linkbtn{font-size:11.5px;font-weight:600;color:var(--bead)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--bead);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .portal-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center}
+  .portal-links a{font-size:12px;font-weight:600;border:1px solid var(--line-strong);border-radius:7px;padding:5px 10px;color:var(--ink-2)}
+  .portal-links a:hover{border-color:var(--bead);color:var(--bead)}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important} .spin{animation:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">
+        <div class="bead-dot" aria-hidden="true"></div>
+        <div>
+          <h1>Trimseal</h1>
+          <div class="sub">SEALANT &amp; MASTIC · SOUTH DEVON</div>
+        </div>
+      </div>
+    </div>
+    <nav class="nav" id="nav" aria-label="Sections">
+      <button data-nav="overview" class="active">Overview</button>
+      <button data-nav="jobs">Jobs <span class="count" id="c-jobs"></span></button>
+      <button data-nav="reseals">Reseals due <span class="count" id="c-reseals"></span></button>
+      <button data-nav="pipeline">Pipeline <span class="count" id="c-pipeline"></span></button>
+      <button data-nav="planning">Planning leads <span class="count" id="c-planning"></span></button>
+      <button data-nav="outreach">Prospects <span class="count" id="c-outreach"></span></button>
+      <button data-nav="invoices">Invoices <span class="count" id="c-invoices"></span></button>
+      <button data-nav="suppliers">Supplies <span class="count" id="c-suppliers"></span></button>
+      <button data-nav="competition">Competition <span class="count" id="c-competition"></span></button>
+      <button data-nav="reviews">Reviews <span class="count" id="c-reviews"></span></button>
+      <button data-nav="weather">Weather</button>
+      <button data-nav="gallery">Before / after <span class="count" id="c-gallery"></span></button>
+    </nav>
+    <div class="side-foot">
+      <div class="row">
+        <button class="btn sm" data-action="export">Back up</button>
+        <button class="btn sm" data-action="import">Restore</button>
+        <button class="btn sm danger" data-action="reset">Reset</button>
+      </div>
+      <div class="store-note" id="storeNote"></div>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+
+    <!-- ===== OVERVIEW ===== -->
+    <section class="view active" id="view-overview">
+      <div class="page-head">
+        <h2>Overview</h2>
+        <p>How the business is doing this month — and how the shift from site work to domestic is tracking.</p>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="grid-2">
+        <div class="panel hero">
+          <div class="panel-head">
+            <h3>Domestic vs commercial</h3>
+            <span class="desc">revenue by month · last 6 months</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="panel-body">
+            <div class="mixwrap">
+              <div class="chart" id="mixChart"></div>
+              <div class="legend">
+                <span><i style="background:var(--bead)"></i>Domestic <span class="muted" id="legDom"></span></span>
+                <span><i style="background:var(--commercial)"></i>Commercial <span class="muted" id="legCom"></span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>Where domestic work comes from</h3><span class="desc">by revenue</span></div>
+          <div class="panel-body"><div class="lsrc" id="leadSrc"></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Needs attention</h3></div>
+        <div class="panel-body"><div class="alerts" id="alerts"></div></div>
+      </div>
+    </section>
+
+    <!-- ===== JOBS ===== -->
+    <section class="view" id="view-jobs">
+      <div class="page-head"><h2>Jobs</h2><p>Every completed job feeds revenue, lead-source insight, the reseal diary and the review prompts. Set a reseal interval on domestic jobs so they come back to you automatically.</p></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Completed jobs</h3><span class="spacer"></span><span class="desc" id="jobsTotal"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Customer</th><th>Area</th><th>Type</th><th>Sector</th><th>Source</th><th class="num">Value</th><th>Review</th><th></th></tr></thead>
+            <tbody id="jobsBody"></tbody>
+          </table>
+        </div>
+        <form class="form" id="jobForm">
+          <div class="fld grow"><label>Customer</label><input name="name" required placeholder="e.g. Mrs Heycock"></div>
+          <div class="fld"><label>Area / town</label><input name="area" placeholder="Teignmouth"></div>
+          <div class="fld"><label>Type</label>
+            <select name="type">
+              <option>Bathroom reseal</option><option>Shower / wet room</option><option>Kitchen</option>
+              <option>Conservatory</option><option>Windows (exterior)</option><option>Flooring / movement joints</option>
+              <option>Commercial site</option><option>Other</option>
+            </select></div>
+          <div class="fld"><label>Sector</label><select name="sector"><option value="domestic">Domestic</option><option value="commercial">Commercial</option></select></div>
+          <div class="fld"><label>Lead source</label>
+            <select name="leadSource">
+              <option>Google</option><option>Checkatrade</option><option>MyBuilder</option><option>Rated People</option>
+              <option>Facebook</option><option>Referral / word of mouth</option><option>Repeat customer</option>
+              <option>Van signage</option><option>Main contractor</option><option>Other</option>
+            </select></div>
+          <div class="fld"><label>Value £</label><input name="value" type="number" min="0" step="1" required></div>
+          <div class="fld"><label>Date done</label><input name="date" type="date" required></div>
+          <div class="fld"><label>Reseal (mo)</label><input name="resealMonths" type="number" min="0" step="1" value="36" title="0 = no reseal reminder"></div>
+          <button class="btn primary" type="submit">Add job</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== RESEALS ===== -->
+    <section class="view" id="view-reseals">
+      <div class="page-head"><h2>Reseals due</h2><p>Domestic silicone fails and mould creeps back every few years. This is repeat work you generate for free — message these customers and rebook them. "Mark done" reschedules the next reminder.</p></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Due now &amp; coming up</h3></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Customer</th><th>Area</th><th>Last done</th><th>Interval</th><th>Due</th><th>Status</th><th></th></tr></thead>
+            <tbody id="resealsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PIPELINE ===== -->
+    <section class="view" id="view-pipeline">
+      <div class="page-head"><h2>Pipeline</h2><p>Potential jobs and sites. Value × likelihood gives a weighted forecast of what's actually coming, so you know when to push for more enquiries.</p></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Upcoming work</h3><span class="spacer"></span><span class="desc" id="pipeWeighted"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Job / site</th><th>Sector</th><th>Start</th><th class="num">Value</th><th class="num">Likelihood</th><th class="num">Weighted</th><th></th></tr></thead>
+            <tbody id="pipelineBody"></tbody>
+          </table>
+        </div>
+        <form class="form" id="pipelineForm">
+          <div class="fld grow"><label>Job / site</label><input name="name" required placeholder="e.g. New build — Dawlish, plot 4"></div>
+          <div class="fld"><label>Sector</label><select name="sector"><option value="domestic">Domestic</option><option value="commercial">Commercial</option></select></div>
+          <div class="fld"><label>Value £</label><input name="value" type="number" min="0" step="1" required></div>
+          <div class="fld"><label>Likelihood %</label><input name="likelihood" type="number" min="0" max="100" step="5" value="50"></div>
+          <div class="fld"><label>Est. start</label><input name="expectedStart" type="date"></div>
+          <button class="btn primary" type="submit">Add</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== PLANNING ===== -->
+    <section class="view" id="view-planning">
+      <div class="page-head"><h2>Planning leads</h2><p>New builds, extensions and commercial schemes all need sealant work. Search live planning applications across the South West, then save the promising ones to chase the builder or developer before your competitors do.</p></div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Search live applications</h3><span class="desc">data via PlanIt · refreshed daily</span></div>
+        <form class="form" id="planningForm" style="border-top:0">
+          <div class="fld"><label>Council</label>
+            <select name="auth">
+              <option value="Teignbridge">Teignbridge (Teignmouth, Dawlish, NA)</option>
+              <option value="Torbay">Torbay (Torquay, Paignton)</option>
+              <option value="Exeter">Exeter</option>
+              <option value="East Devon">East Devon</option>
+              <option value="South Hams">South Hams</option>
+              <option value="Mid Devon">Mid Devon</option>
+              <option value="West Devon">West Devon</option>
+              <option value="North Devon">North Devon</option>
+              <option value="Plymouth">Plymouth</option>
+              <option value="Cornwall">Cornwall</option>
+            </select></div>
+          <div class="fld grow"><label>Keyword (optional)</label><input name="search" placeholder='e.g. "new dwelling", extension, hotel, conversion'></div>
+          <div class="fld"><label>Last</label>
+            <select name="recent"><option value="30">30 days</option><option value="60">60 days</option><option value="90" selected>90 days</option><option value="180">6 months</option></select></div>
+          <div class="fld" style="align-self:flex-end"><button class="btn primary" type="submit">Search</button></div>
+          <div class="fld"><label>Or postcode</label><input name="pcode" placeholder="TQ14" style="width:110px"></div>
+          <div class="fld"><label>Radius</label><select name="krad"><option value="2">2 km</option><option value="5" selected>5 km</option><option value="10">10 km</option></select></div>
+        </form>
+        <div class="panel-body" style="border-top:1px solid var(--line)">
+          <div id="planningResults"><div class="map-note">Pick a council (or enter a postcode) and hit Search to pull recent applications. Leave the keyword blank to see everything, or try “new dwellings”, “conversion” or “hotel” to focus on work likely to need sealant.</div></div>
+          <div class="portal-links">
+            <span class="desc" style="width:100%;margin-bottom:2px">The search above covers Teignbridge, Torbay, Exeter and every other South West council. To browse a council's own portal:</span>
+            <a href="https://www.planit.org.uk/" target="_blank" rel="noopener">Open PlanIt (all UK councils) →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Saved planning leads</h3><span class="spacer"></span><span class="desc" id="leadsCount"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Site</th><th>Authority</th><th>Type</th><th>Status</th><th>Added</th><th></th></tr></thead>
+            <tbody id="planningLeadsBody"></tbody>
+          </table>
+        </div>
+        <form class="form" id="planningLeadForm">
+          <div class="fld grow"><label>Site / address</label><input name="address" required placeholder="Add a lead manually"></div>
+          <div class="fld"><label>Authority</label><input name="authority" placeholder="Teignbridge"></div>
+          <div class="fld"><label>Type</label><input name="type" placeholder="New build / extension"></div>
+          <div class="fld grow"><label>Link</label><input name="link" placeholder="https://…"></div>
+          <div class="fld" style="align-self:flex-end"><button class="btn primary" type="submit">Add lead</button></div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== OUTREACH ===== -->
+    <section class="view" id="view-outreach">
+      <div class="page-head"><h2>Prospects</h2><p>Local businesses that need sealant — hotels, holiday parks, care homes, pubs and more. Browse the map, filter by type, then fire off a branded intro email. Pre-loaded with real businesses around your patch; add the rest as you find them.</p></div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Your details for emails</h3><span class="desc">used to sign off your intros</span></div>
+        <form class="form" id="senderForm" style="border-top:0">
+          <div class="fld"><label>Your name</label><input name="senderContact" placeholder="e.g. Sam"></div>
+          <div class="fld"><label>Phone</label><input name="senderPhone" placeholder="07…"></div>
+          <div class="fld grow"><label>Email</label><input name="senderEmail" placeholder="you@trimseal.co.uk"></div>
+          <div class="fld grow"><label>Website</label><input name="senderWebsite" placeholder="trimseal.co.uk"></div>
+          <div class="fld" style="align-self:flex-end"><button class="btn primary" type="submit">Save</button></div>
+        </form>
+      </div>
+
+      <div class="toolbar">
+        <div class="chips" id="prospectChips"></div>
+        <span class="spacer" style="flex:1"></span>
+        <input class="search-in" id="prospectSearch" placeholder="Search name or area…">
+      </div>
+      <div id="prospectMapWrap"></div>
+      <div class="panel">
+        <div class="panel-head"><h3 id="prospectHeading">All prospects</h3><span class="spacer"></span><span class="desc" id="prospectCount"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Business</th><th>Type</th><th>Area</th><th>Phone</th><th>Email</th><th>Status</th><th></th></tr></thead>
+            <tbody id="prospectBody"></tbody>
+          </table>
+        </div>
+        <form class="form" id="prospectForm">
+          <div class="fld grow"><label>Business</label><input name="name" required placeholder="Add a prospect"></div>
+          <div class="fld"><label>Type</label>
+            <select name="category">
+              <option>Hotels &amp; B&amp;Bs</option><option>Holiday parks</option><option>Care homes</option>
+              <option>Pubs &amp; bars</option><option>Restaurants &amp; cafés</option><option>Leisure &amp; gyms</option>
+              <option>Schools &amp; public buildings</option><option>Offices &amp; retail</option><option>Developers &amp; agents</option><option>Other</option>
+            </select></div>
+          <div class="fld"><label>Area</label><input name="area" placeholder="Teignmouth"></div>
+          <div class="fld"><label>Phone</label><input name="phone"></div>
+          <div class="fld grow"><label>Email</label><input name="email"></div>
+          <div class="fld" style="align-self:flex-end"><button class="btn primary" type="submit">Add</button></div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== INVOICES ===== -->
+    <section class="view" id="view-invoices">
+      <div class="page-head"><h2>Invoices</h2><p>Cash flow kills more trade businesses than lack of work. Track what's owed and chase anything overdue — main contractors especially.</p></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Invoices</h3><span class="spacer"></span><span class="desc" id="invTotals"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Customer</th><th>Raised</th><th>Due</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead>
+            <tbody id="invoicesBody"></tbody>
+          </table>
+        </div>
+        <form class="form" id="invoiceForm">
+          <div class="fld grow"><label>Customer</label><input name="client" required placeholder="Name / contractor"></div>
+          <div class="fld"><label>Amount £</label><input name="amount" type="number" min="0" step="1" required></div>
+          <div class="fld"><label>Raised</label><input name="raised" type="date" required></div>
+          <div class="fld"><label>Due</label><input name="due" type="date" required></div>
+          <button class="btn primary" type="submit">Add invoice</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== SUPPLIERS ===== -->
+    <section class="view" id="view-suppliers">
+      <div class="page-head"><h2>Supplies</h2><p>Compare cartridge prices across suppliers so you always buy at the best rate. The cheapest option per product is highlighted; low stock is flagged.</p></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Mastic &amp; sundries</h3></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Product</th><th>Brand</th><th>Supplier</th><th class="num">Price</th><th>Unit</th><th class="num">In stock</th><th></th></tr></thead>
+            <tbody id="suppliersBody"></tbody>
+          </table>
+        </div>
+        <form class="form" id="supplierForm">
+          <div class="fld grow"><label>Product</label><input name="product" required placeholder="LM silicone — white"></div>
+          <div class="fld"><label>Brand</label><input name="brand" placeholder="Soudal"></div>
+          <div class="fld"><label>Supplier</label><input name="supplier" placeholder="Toolstation"></div>
+          <div class="fld"><label>Price £</label><input name="pricePerUnit" type="number" min="0" step="0.01" required></div>
+          <div class="fld"><label>Unit</label><input name="unit" value="per 310ml"></div>
+          <div class="fld"><label>Stock</label><input name="stock" type="number" min="0" step="1" value="0"></div>
+          <button class="btn primary" type="submit">Add</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== COMPETITION ===== -->
+    <section class="view" id="view-competition">
+      <div class="page-head"><h2>Competition</h2><p>Keep tabs on what affects your bids — local rates, lead times and reputation. Update this occasionally; it's a notebook, not a live feed.</p></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Local competitors</h3></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Name</th><th class="num">Day rate</th><th class="num">£ / metre</th><th class="num">Lead time</th><th class="num">Reviews</th><th class="num">Rating</th><th></th></tr></thead>
+            <tbody id="competitorsBody"></tbody>
+          </table>
+        </div>
+        <form class="form" id="competitorForm">
+          <div class="fld grow"><label>Name</label><input name="name" required placeholder="e.g. Coast Sealants"></div>
+          <div class="fld"><label>Day rate £</label><input name="dayRate" type="number" min="0" step="5"></div>
+          <div class="fld"><label>£ / metre</label><input name="pricePerMetre" type="number" min="0" step="0.5"></div>
+          <div class="fld"><label>Lead (days)</label><input name="leadTimeDays" type="number" min="0" step="1"></div>
+          <div class="fld"><label>Reviews</label><input name="reviewCount" type="number" min="0" step="1"></div>
+          <div class="fld"><label>Rating</label><input name="rating" type="number" min="0" max="5" step="0.1"></div>
+          <button class="btn primary" type="submit">Add</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== REVIEWS ===== -->
+    <section class="view" id="view-reviews">
+      <div class="page-head"><h2>Reviews</h2><p>For domestic work, reviews <em>are</em> the marketing — homeowners search, read, and book. Ask every customer the day you finish, and keep your Google profile strong.</p></div>
+      <div class="kpis" id="reviewKpis"></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Your Google Business Profile</h3><span class="desc">update these manually</span></div>
+        <form class="form" id="reviewSettingsForm" style="border-top:0">
+          <div class="fld"><label>Star rating</label><input name="googleRating" type="number" min="0" max="5" step="0.1"></div>
+          <div class="fld"><label>Review count</label><input name="googleReviews" type="number" min="0" step="1"></div>
+          <button class="btn primary" type="submit">Save</button>
+          <span class="desc" style="align-self:center">A strong profile is the single highest-leverage thing for local domestic work.</span>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Jobs to ask for a review</h3><span class="desc">recent domestic jobs · not yet requested</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Customer</th><th>Area</th><th>Date done</th><th>Status</th><th></th></tr></thead>
+            <tbody id="reviewJobsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== WEATHER ===== -->
+    <section class="view" id="view-weather">
+      <div class="page-head"><h2>Weather</h2><p>For exterior work — you can't apply mastic to wet surfaces and cold stops it curing. Days are flagged Good / Marginal / Poor for application. Interior jobs aren't affected.</p></div>
+      <p class="inline-note">Live forecast from Open-Meteo (no account needed). If it won't load in preview, it'll work once this file is opened directly or hosted. Poor = under 5°C, rain likely, or significant rainfall.</p>
+      <div class="panel">
+        <div class="panel-head"><h3>Work locations</h3><span class="spacer"></span>
+          <form id="weatherForm" style="display:flex;gap:8px">
+            <input name="name" placeholder="Add a town…" style="font:inherit;font-size:13px;padding:6px 9px;border:1px solid var(--line-strong);border-radius:7px">
+            <button class="btn primary sm" type="submit">Add</button>
+          </form>
+        </div>
+        <div class="panel-body"><div class="wx-grid" id="weatherGrid"></div></div>
+      </div>
+    </section>
+
+    <!-- ===== GALLERY ===== -->
+    <section class="view" id="view-gallery">
+      <div class="page-head"><h2>Before / after</h2><p>Domestic mastic sells on looks. A tidy gallery feeds your Google profile, quotes and socials — and wins the next job. Paste image links (e.g. from your phone's cloud photos or hosting).</p></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Job photos</h3></div>
+        <div class="panel-body"><div class="gal" id="galleryGrid"></div></div>
+        <form class="form" id="photoForm">
+          <div class="fld grow"><label>Job</label><input name="jobName" required placeholder="Bathroom reseal — Shaldon"></div>
+          <div class="fld grow"><label>Before image URL</label><input name="beforeUrl" placeholder="https://…"></div>
+          <div class="fld grow"><label>After image URL</label><input name="afterUrl" placeholder="https://…"></div>
+          <div class="fld grow"><label>Caption</label><input name="caption" placeholder="Mouldy → fresh white bead"></div>
+          <button class="btn primary" type="submit">Add</button>
+        </form>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Storage layer — uses localStorage when available, falls back
+   to in-memory so it never crashes (e.g. in a sandboxed preview).
+   ============================================================ */
+const store = (function(){
+  let mem = {}, usable = false;
+  try { const k="__mw_test"; localStorage.setItem(k,"1"); localStorage.removeItem(k); usable = true; }
+  catch(e){ usable = false; }
+  return {
+    usable,
+    get(k){ try { return usable ? localStorage.getItem(k) : (k in mem ? mem[k] : null); } catch(e){ return (k in mem)?mem[k]:null; } },
+    set(k,v){ try { usable ? localStorage.setItem(k,v) : (mem[k]=v); } catch(e){ mem[k]=v; } }
+  };
+})();
+const DB_KEY = "masticDash.v1";
+let DB = null;
+
+/* ---------- helpers ---------- */
+const $  = s => document.querySelector(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const today0 = () => { const d=new Date(); d.setHours(0,0,0,0); return d; };
+const iso = d => d.toISOString().slice(0,10);
+const daysAgo = n => { const d=today0(); d.setDate(d.getDate()-n); return iso(d); };
+const monthsAgo = (m,day) => { const d=today0(); d.setMonth(d.getMonth()-m); if(day) d.setDate(day); return iso(d); };
+function addMonths(isoStr, m){ const d=new Date(isoStr+"T00:00:00"); d.setMonth(d.getMonth()+Number(m)); return d; }
+function parseISO(s){ return new Date(s+"T00:00:00"); }
+const money = n => "£" + Math.round(Number(n)||0).toLocaleString("en-GB");
+const money2 = n => "£" + (Number(n)||0).toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtDate = s => s ? parseISO(s).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}) : "—";
+const monthKey = s => s.slice(0,7);
+function daysBetween(a,b){ return Math.round((a-b)/86400000); }
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ============================================================
+   Seed data — realistic for a South Devon mastic business that is
+   shifting from commercial sites toward domestic work. Dates are
+   generated relative to today so the demo always looks current.
+   ============================================================ */
+function seed(){
+  const J = (name,area,type,sector,value,date,leadSource,resealMonths,reviewReceived)=>(
+    {id:uid(),name,area,type,sector,value,date,leadSource,resealMonths,reviewRequested:!!reviewReceived,reviewReceived:!!reviewReceived});
+  DB = {
+    settings:{ googleRating:4.9, googleReviews:38, senderContact:"", senderPhone:"", senderEmail:"", senderWebsite:"", baseArea:"South Devon" },
+    jobs:[
+      // ----- this month: mostly domestic (the goal) -----
+      J("Mrs Heycock","Teignmouth","Bathroom reseal","domestic",240,daysAgo(2),"Google",36,false),
+      J("J. Pengelly","Shaldon","Shower / wet room","domestic",310,daysAgo(5),"Referral / word of mouth",36,false),
+      J("The Old Bakehouse","Newton Abbot","Kitchen","domestic",185,daysAgo(9),"Checkatrade",48,true),
+      J("R. Sampson","Dawlish","Conservatory","domestic",420,daysAgo(13),"Google",60,false),
+      // ----- 1 month ago -----
+      J("Coombe Vale flats","Teignmouth","Commercial site","commercial",1850,monthsAgo(1,18),"Main contractor",0,false),
+      J("Mrs Doidge","Bishopsteignton","Bathroom reseal","domestic",260,monthsAgo(1,12),"MyBuilder",36,true),
+      J("K. Westlake","Torquay","Windows (exterior)","domestic",380,monthsAgo(1,8),"Van signage",60,false),
+      J("P. Hannaford","Newton Abbot","Shower / wet room","domestic",295,monthsAgo(1,5),"Referral / word of mouth",36,true),
+      J("Quayside Cafe","Teignmouth","Kitchen","domestic",340,monthsAgo(1,2),"Repeat customer",48,true),
+      // ----- 2 months ago -----
+      J("Riverside Mews ph2","Kingsteignton","Commercial site","commercial",2200,monthsAgo(2,20),"Main contractor",0,false),
+      J("S. Crocker","Shaldon","Bathroom reseal","domestic",230,monthsAgo(2,14),"Google",36,true),
+      J("Holcombe Court","Dawlish","Flooring / movement joints","domestic",510,monthsAgo(2,7),"Checkatrade",0,true),
+      J("M. Ferris","Teignmouth","Conservatory","domestic",365,monthsAgo(2,3),"Facebook",60,true),
+      // ----- 3 months ago -----
+      J("Bay View Apartments","Torquay","Commercial site","commercial",3100,monthsAgo(3,22),"Main contractor",0,false),
+      J("Lidwell Park groundworks","Dawlish","Commercial site","commercial",1750,monthsAgo(3,12),"Main contractor",0,false),
+      J("A. Northcott","Newton Abbot","Bathroom reseal","domestic",250,monthsAgo(3,6),"Google",36,true),
+      // ----- 4 months ago -----
+      J("Teign Wharf units","Teignmouth","Commercial site","commercial",2650,monthsAgo(4,18),"Main contractor",0,false),
+      J("Harbourreach build","Brixham","Commercial site","commercial",2950,monthsAgo(4,9),"Main contractor",0,false),
+      J("L. Stentiford","Shaldon","Kitchen","domestic",210,monthsAgo(4,4),"Referral / word of mouth",48,true),
+      // ----- 5 months ago: commercial-heavy (the old shape) -----
+      J("Maple Rise phase 1","Newton Abbot","Commercial site","commercial",3400,monthsAgo(5,21),"Main contractor",0,false),
+      J("Seacombe development","Paignton","Commercial site","commercial",2800,monthsAgo(5,11),"Main contractor",0,false),
+      J("Estuary House refit","Teignmouth","Commercial site","commercial",1600,monthsAgo(5,5),"Main contractor",0,false),
+      // ----- older domestic jobs now DUE for reseal (demonstrates the engine) -----
+      J("D. Mudge","Teignmouth","Shower / wet room","domestic",240,monthsAgo(40,15),"Referral / word of mouth",36,true),
+      J("Mrs Tucker","Dawlish","Bathroom reseal","domestic",220,monthsAgo(52,10),"Google",48,true),
+    ],
+    pipeline:[
+      {id:uid(),name:"New build — Dawlish, plots 3–6 (domestic snagging)",sector:"domestic",value:1900,likelihood:60,expectedStart:daysAgo(-14)},
+      {id:uid(),name:"Mr Yeo — full bathroom + ensuite reseal",sector:"domestic",value:480,likelihood:80,expectedStart:daysAgo(-5)},
+      {id:uid(),name:"Estate agent — void property turnarounds",sector:"domestic",value:1200,likelihood:45,expectedStart:daysAgo(-30)},
+      {id:uid(),name:"Pavilion Quay block (last big site)",sector:"commercial",value:4200,likelihood:35,expectedStart:daysAgo(-45)},
+      {id:uid(),name:"Conservatory refits — referral cluster, Shaldon",sector:"domestic",value:900,likelihood:55,expectedStart:daysAgo(-21)},
+    ],
+    invoices:[
+      {id:uid(),client:"Main contractor — Bay View",amount:3100,raised:daysAgo(64),due:daysAgo(34),paid:false},
+      {id:uid(),client:"Main contractor — Riverside Mews",amount:2200,raised:daysAgo(40),due:daysAgo(10),paid:false},
+      {id:uid(),client:"R. Sampson (Dawlish)",amount:420,raised:daysAgo(13),due:daysAgo(-1),paid:false},
+      {id:uid(),client:"Mr Yeo — deposit",amount:200,raised:daysAgo(4),due:daysAgo(-10),paid:false},
+      {id:uid(),client:"Mrs Doidge",amount:260,raised:daysAgo(38),due:daysAgo(24),paid:true},
+      {id:uid(),client:"Quayside Cafe",amount:340,raised:daysAgo(33),due:daysAgo(19),paid:true},
+    ],
+    suppliers:[
+      {id:uid(),product:"LM silicone — white",brand:"Soudal",supplier:"Toolstation",pricePerUnit:4.49,unit:"per 310ml",stock:24},
+      {id:uid(),product:"LM silicone — white",brand:"Geocel",supplier:"Screwfix",pricePerUnit:5.29,unit:"per 310ml",stock:6},
+      {id:uid(),product:"LM silicone — white",brand:"CT1",supplier:"Trade counter",pricePerUnit:7.95,unit:"per 290ml",stock:12},
+      {id:uid(),product:"LM silicone — clear",brand:"Soudal",supplier:"Toolstation",pricePerUnit:4.79,unit:"per 310ml",stock:8},
+      {id:uid(),product:"Sanitary silicone — white",brand:"Everbuild",supplier:"Screwfix",pricePerUnit:3.99,unit:"per 295ml",stock:3},
+      {id:uid(),product:"Frame sealant — anthracite",brand:"Soudal",supplier:"Trade counter",pricePerUnit:6.20,unit:"per 310ml",stock:10},
+      {id:uid(),product:"Mould remover / cleaner",brand:"HG",supplier:"Screwfix",pricePerUnit:5.50,unit:"per 500ml",stock:2},
+    ],
+    competitors:[
+      {id:uid(),name:"Coast Sealants",dayRate:280,pricePerMetre:9,leadTimeDays:14,reviewCount:62,rating:4.8},
+      {id:uid(),name:"Devon Mastic Co.",dayRate:240,pricePerMetre:7.5,leadTimeDays:21,reviewCount:18,rating:4.5},
+      {id:uid(),name:"A1 Sealant Services",dayRate:300,pricePerMetre:11,leadTimeDays:7,reviewCount:140,rating:4.9},
+    ],
+    weatherLocations:[
+      {id:uid(),name:"Teignmouth"},
+      {id:uid(),name:"Newton Abbot"},
+    ],
+    photos:[
+      {id:uid(),jobName:"Bathroom reseal — Shaldon",beforeUrl:"",afterUrl:"",caption:"Mouldy old bead removed, fresh white silicone",date:daysAgo(5)},
+      {id:uid(),jobName:"Shower tray — Teignmouth",beforeUrl:"",afterUrl:"",caption:"Full strip-out and reseal",date:daysAgo(20)},
+    ]
+  };
+  DB.planningLeads = [];
+  DB.prospects = [
+    ["The Cliffden Hotel","Hotels & B&Bs","Teignmouth",50.5508154,-3.4922902,"01626 770052",4.0],
+    ["The Thornhill (B&B)","Hotels & B&Bs","Teignmouth",50.5479265,-3.4918045,"01626 773460",4.6],
+    ["The Lynton","Hotels & B&Bs","Teignmouth",50.5430331,-3.4974357,"01626 774349",4.8],
+    ["Langstone Cliff Hotel","Hotels & B&Bs","Dawlish",50.5940009,-3.4463688,"01626 868000",4.6],
+    ["Lyme Bay House","Hotels & B&Bs","Dawlish",50.5786201,-3.4679736,"01626 864211",4.5],
+    ["The Imperial Torquay","Hotels & B&Bs","Torquay",50.4569041,-3.5209868,"01803 294301",4.0],
+    ["TLH Derwent Hotel","Hotels & B&Bs","Torquay",50.4663581,-3.5385034,"01803 400500",4.1],
+    ["Premier Inn Torquay Seafront","Hotels & B&Bs","Torquay",50.4637509,-3.5350409,"0333 321 9097",4.1],
+    ["Mercure Exeter Southgate","Hotels & B&Bs","Exeter",50.7206298,-3.5286546,"01392 412812",4.1],
+    ["Leonardo Hotel Exeter","Hotels & B&Bs","Exeter",50.7258123,-3.5216196,"01392 312400",4.2],
+    ["Welcome Family Holiday Park","Holiday parks","Dawlish Warren",50.6001833,-3.4476097,"0345 165 6265",4.5],
+    ["Dawlish Sands Holiday Park","Holiday parks","Dawlish Warren",50.603025,-3.4467692,"01626 244737",4.1],
+    ["Golden Sands Holiday Park","Holiday parks","Dawlish Warren",50.5961749,-3.4564594,"01626 244747",3.8],
+    ["Waterside Holiday Park","Holiday parks","Paignton",50.4135696,-3.5582356,"01803 221261",4.2],
+    ["Whitehill Country Park","Holiday parks","Paignton",50.4180082,-3.6087146,"01803 782338",4.5],
+    ["Beverley Holidays","Holiday parks","Paignton",50.4134707,-3.5690431,"01803 843887",4.5],
+    ["South West Holiday Parks (Coast View)","Holiday parks","Shaldon",50.5350082,-3.5030044,"0330 380 1020",4.8],
+    ["The Croft Residential Home","Care homes","Newton Abbot",50.5232089,-3.6097813,"01626 207265",4.4],
+    ["Somerforde Residential Care","Care homes","Newton Abbot",50.5248167,-3.5983055,"01626 361786",4.5],
+    ["Mount Pleasant Care Home","Care homes","Newton Abbot",50.52653,-3.60491,"01626 201474",4.9],
+    ["Westlands Care Home","Care homes","Teignmouth",50.5493854,-3.5059999,"01626 773007",4.0],
+    ["Centrum Care – The White House","Care homes","Teignmouth",50.5546738,-3.4937955,"01626 244218",5.0],
+    ["Barchester Mount Tryon","Care homes","Torquay",50.4685352,-3.5144731,"01803 701112",4.7],
+    ["Lincombe Manor Care Centre","Care homes","Torquay",50.4605681,-3.5069379,"01803 389800",4.7],
+    ["Ye Olde Jolly Sailor","Pubs & bars","Teignmouth",50.545241,-3.4984243,"01626 772864",4.4],
+    ["Ship Inn","Pubs & bars","Teignmouth",50.5444907,-3.4981642,"01626 772674",4.5],
+    ["The Blue Anchor","Pubs & bars","Teignmouth",50.5465878,-3.4994564,"01626 772741",4.7],
+    ["The Jolly Farmer","Pubs & bars","Newton Abbot",50.5305556,-3.6122222,"01626 354010",4.3],
+    ["The Abbot","Pubs & bars","Newton Abbot",50.5289258,-3.6113091,"07914 384578",4.5],
+    ["Social Bar & Kitchen","Restaurants & cafés","Newton Abbot",50.5293176,-3.6124122,"01626 911061",4.9],
+    ["The New Quay Inn","Restaurants & cafés","Teignmouth",50.544822,-3.498443,"01626 774145",4.3]
+  ].map(p=>({id:uid(),name:p[0],category:p[1],area:p[2],lat:p[3],lng:p[4],phone:p[5],rating:p[6],website:"",email:"",status:"To contact",notes:""}));
+}
+
+/* ---------- load / save ---------- */
+function load(){
+  const raw = store.get(DB_KEY);
+  if(raw){ try{ DB = JSON.parse(raw); }catch(e){ seed(); } }
+  else { seed(); save(); }
+  DB.settings = Object.assign({googleRating:0,googleReviews:0,senderContact:"",senderPhone:"",senderEmail:"",senderWebsite:"",baseArea:"South Devon"}, DB.settings||{});
+  DB.prospects = DB.prospects || [];
+  DB.planningLeads = DB.planningLeads || [];
+  ["jobs","pipeline","invoices","suppliers","competitors","weatherLocations","photos"].forEach(k=>{ if(!Array.isArray(DB[k])) DB[k]=[]; });
+}
+function save(){ store.set(DB_KEY, JSON.stringify(DB)); }
+
+/* ============================================================
+   Derived helpers
+   ============================================================ */
+function thisMonthKey(){ return iso(today0()).slice(0,7); }
+function jobsThisMonth(){ const k=thisMonthKey(); return DB.jobs.filter(j=>monthKey(j.date)===k); }
+function resealItems(){
+  const t = today0();
+  return DB.jobs
+    .filter(j=>j.sector==="domestic" && Number(j.resealMonths)>0)
+    .map(j=>{
+      const due = addMonths(j.date, j.resealMonths); due.setHours(0,0,0,0);
+      const days = daysBetween(due, t); // negative = overdue
+      return {...j, due, days};
+    })
+    .filter(r=>r.days <= 60)                 // due within 2 months or already due
+    .sort((a,b)=>a.days-b.days);
+}
+function invoiceState(inv){
+  if(inv.paid) return "paid";
+  return parseISO(inv.due) < today0() ? "overdue" : "due";
+}
+function outstanding(){ return DB.invoices.filter(i=>!i.paid).reduce((s,i)=>s+Number(i.amount),0); }
+function overdueTotal(){ return DB.invoices.filter(i=>invoiceState(i)==="overdue").reduce((s,i)=>s+Number(i.amount),0); }
+function reviewNeeded(){
+  const cutoff = today0(); cutoff.setDate(cutoff.getDate()-120);
+  return DB.jobs.filter(j=>j.sector==="domestic" && !j.reviewRequested && parseISO(j.date)>=cutoff)
+                .sort((a,b)=>b.date.localeCompare(a.date));
+}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+function renderAll(){
+  renderOverview();
+  renderJobs();
+  renderReseals();
+  renderPipeline();
+  renderPlanningLeads();
+  renderProspects();
+  renderInvoices();
+  renderSuppliers();
+  renderCompetitors();
+  renderReviews();
+  renderGallery();
+  renderCounts();
+  renderStoreNote();
+}
+
+function renderCounts(){
+  $("#c-jobs").textContent = DB.jobs.length;
+  $("#c-pipeline").textContent = DB.pipeline.length;
+  $("#c-suppliers").textContent = DB.suppliers.length;
+  $("#c-competition").textContent = DB.competitors.length;
+  $("#c-gallery").textContent = DB.photos.length;
+  const unpaid = DB.invoices.filter(i=>!i.paid).length;
+  $("#c-invoices").textContent = unpaid;
+  const due = resealItems().length;
+  const rs = $("#c-reseals"); rs.textContent = due; rs.classList.toggle("alert", due>0);
+  const rev = reviewNeeded().length; $("#c-reviews").textContent = rev;
+  $("#c-planning").textContent = DB.planningLeads.length;
+  const toContact = DB.prospects.filter(p=>p.status==="To contact").length;
+  const op = $("#c-outreach"); op.textContent = toContact; op.classList.toggle("alert", toContact>0);
+}
+
+function renderStoreNote(){
+  $("#storeNote").textContent = store.usable
+    ? "Saved to this browser. Back up regularly."
+    : "Preview mode — changes won't be saved here. Download this file to keep data.";
+}
+
+/* ----- Overview ----- */
+function renderOverview(){
+  const jm = jobsThisMonth();
+  const revMonth = jm.reduce((s,j)=>s+Number(j.value),0);
+  const domMonth = jm.filter(j=>j.sector==="domestic").reduce((s,j)=>s+Number(j.value),0);
+  const domShare = revMonth ? Math.round(domMonth/revMonth*100) : 0;
+  const weighted = DB.pipeline.reduce((s,p)=>s+Number(p.value)*Number(p.likelihood)/100,0);
+  const domJobs = jm.filter(j=>j.sector==="domestic");
+  const avgDom = domJobs.length ? domMonth/domJobs.length : 0;
+
+  // previous month domestic share for trend
+  const prevK = (()=>{ const d=today0(); d.setMonth(d.getMonth()-1); return iso(d).slice(0,7); })();
+  const pj = DB.jobs.filter(j=>monthKey(j.date)===prevK);
+  const prevRev = pj.reduce((s,j)=>s+Number(j.value),0);
+  const prevShare = prevRev ? Math.round(pj.filter(j=>j.sector==="domestic").reduce((s,j)=>s+Number(j.value),0)/prevRev*100) : 0;
+  const diff = domShare - prevShare;
+  const trend = diff===0 ? `level vs last month`
+    : `<span class="${diff>0?'up':'down'}">${diff>0?'▲':'▼'} ${Math.abs(diff)} pts</span> vs last month`;
+
+  $("#kpis").innerHTML = `
+    ${kpi("Revenue this month", money(revMonth), jm.length+" jobs completed")}
+    ${kpi("Domestic share", domShare+"%", trend, true)}
+    ${kpi("Pipeline (weighted)", money(weighted), DB.pipeline.length+" potential jobs")}
+    ${kpi("Outstanding", money(outstanding()), overdueTotal()>0 ? `<span style="color:var(--bad);font-weight:600">${money(overdueTotal())} overdue</span>` : "all on schedule")}
+    ${kpi("Avg domestic job", money(avgDom), domJobs.length+" domestic this month")}
+  `;
+
+  renderMixChart();
+  renderLeadSources();
+  renderAlerts();
+}
+function kpi(lab,val,note,star){
+  return `<div class="kpi${star?' star':''}"><div class="lab">${lab}</div><div class="val tnum">${val}</div><div class="note">${note||""}</div></div>`;
+}
+
+function lastSixMonths(){
+  const out=[]; const base=today0();
+  for(let i=5;i>=0;i--){
+    const d=new Date(base.getFullYear(),base.getMonth()-i,1);
+    out.push({key:iso(d).slice(0,7), label:d.toLocaleDateString("en-GB",{month:"short"}), dom:0, com:0});
+  }
+  const map=Object.fromEntries(out.map(o=>[o.key,o]));
+  DB.jobs.forEach(j=>{ const m=map[monthKey(j.date)]; if(m){ (j.sector==="domestic"?m.dom+=Number(j.value):m.com+=Number(j.value)); } });
+  return out;
+}
+function renderMixChart(){
+  const data = lastSixMonths();
+  const W=640, H=270, padL=44, padR=12, padT=24, padB=42;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  const max = Math.max(1, ...data.map(d=>d.dom+d.com));
+  const niceMax = Math.ceil(max/500)*500 || 500;
+  const bw = innerW/data.length;
+  const barW = Math.min(58, bw*0.56);
+  const y = v => padT + innerH - (v/niceMax)*innerH;
+
+  let grid="";
+  for(let g=0; g<=4; g++){
+    const v=niceMax*g/4, yy=y(v);
+    grid += `<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="#eef1f3"/>`;
+    grid += `<text x="${padL-8}" y="${yy+3}" text-anchor="end" font-size="10" fill="#8a96a0">£${(v/1000).toLocaleString("en-GB",{maximumFractionDigits:1})}k</text>`;
+  }
+  let bars="";
+  data.forEach((d,i)=>{
+    const cx = padL + bw*i + bw/2;
+    const x = cx - barW/2;
+    const total=d.dom+d.com;
+    const hCom=(d.com/niceMax)*innerH, hDom=(d.dom/niceMax)*innerH;
+    const yCom=y(d.com), yDom=y(total);
+    if(d.com>0) bars += `<rect x="${x}" y="${yCom}" width="${barW}" height="${Math.max(0,padT+innerH-yCom)}" fill="var(--commercial)" rx="2"/>`;
+    if(d.dom>0) bars += `<rect x="${x}" y="${yDom}" width="${barW}" height="${hDom}" fill="var(--bead)" rx="2"/>`;
+    const share = total? Math.round(d.dom/total*100):0;
+    if(total>0) bars += `<text x="${cx}" y="${yDom-7}" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--bead)">${share}%</text>`;
+    bars += `<text x="${cx}" y="${H-padB+18}" text-anchor="middle" font-size="11" fill="#5a6772">${d.label}</text>`;
+  });
+
+  $("#mixChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Domestic versus commercial revenue by month">${grid}${bars}<line x1="${padL}" y1="${padT+innerH}" x2="${W-padR}" y2="${padT+innerH}" stroke="#d3d9e0"/></svg>`;
+
+  const totDom=data.reduce((s,d)=>s+d.dom,0), totCom=data.reduce((s,d)=>s+d.com,0);
+  $("#legDom").textContent = "· "+money(totDom);
+  $("#legCom").textContent = "· "+money(totCom);
+}
+
+function renderLeadSources(){
+  const map={};
+  DB.jobs.filter(j=>j.sector==="domestic").forEach(j=>{ map[j.leadSource]=(map[j.leadSource]||0)+Number(j.value); });
+  const rows=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const max=Math.max(1,...rows.map(r=>r[1]));
+  const el=$("#leadSrc");
+  if(!rows.length){ el.innerHTML=`<div class="empty">No domestic jobs logged yet.</div>`; return; }
+  el.innerHTML = rows.map(([k,v])=>`
+    <div class="row">
+      <span>${esc(k)}</span>
+      <span class="bar"><span style="width:${Math.round(v/max*100)}%"></span></span>
+      <span class="amt">${money(v)}</span>
+    </div>`).join("");
+}
+
+function renderAlerts(){
+  const od = DB.invoices.filter(i=>invoiceState(i)==="overdue");
+  const odSum = od.reduce((s,i)=>s+Number(i.amount),0);
+  const due = resealItems().filter(r=>r.days<=0);
+  const soon = resealItems().filter(r=>r.days>0);
+  const rev = reviewNeeded();
+  const low = DB.suppliers.filter(s=>Number(s.stock)<=5);
+
+  const cards=[];
+  cards.push(alertCard(od.length?"bad":"good","Overdue invoices",
+    od.length?`${od.length} · ${money(odSum)}`:"None",
+    od.length?"Chase these — cash flow first.":"All invoices on schedule.","invoices"));
+  cards.push(alertCard(due.length?"warn":"good","Reseals due now",
+    due.length?String(due.length):"None",
+    due.length?`Plus ${soon.length} due soon. Free repeat work.`:`${soon.length} coming up in 60 days.`,"reseals"));
+  cards.push(alertCard(rev.length?"warn":"good","Reviews to request",
+    rev.length?String(rev.length):"Up to date",
+    rev.length?"Ask while the job's fresh.":"No recent domestic jobs waiting.","reviews"));
+  cards.push(alertCard(low.length?"warn":"good","Low stock",
+    low.length?String(low.length):"OK",
+    low.length?low.map(s=>esc(s.product)).slice(0,2).join(", "):"Nothing needs reordering.","suppliers"));
+
+  $("#alerts").innerHTML = cards.join("");
+}
+function alertCard(sev,lab,val,sub,nav){
+  return `<div class="alert ${sev}"><div class="a-lab">${lab}</div><div class="a-val tnum">${val}</div><div class="a-sub">${sub}</div><a href="#" data-nav="${nav}">View →</a></div>`;
+}
+
+/* ----- Jobs ----- */
+function renderJobs(){
+  const rows = DB.jobs.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const body=$("#jobsBody");
+  body.innerHTML = rows.length ? rows.map(j=>`
+    <tr>
+      <td class="muted tnum">${fmtDate(j.date)}</td>
+      <td>${esc(j.name)}</td>
+      <td class="muted">${esc(j.area||"—")}</td>
+      <td>${esc(j.type)}</td>
+      <td><span class="tag ${j.sector==='commercial'?'com':''}">${j.sector==='commercial'?'Commercial':'Domestic'}</span></td>
+      <td class="muted">${esc(j.leadSource)}</td>
+      <td class="num">${money(j.value)}</td>
+      <td>${j.reviewReceived?'<span class="pill good">Got</span>':(j.reviewRequested?'<span class="pill warn">Asked</span>':'<span class="pill neutral">—</span>')}</td>
+      <td class="num"><button class="btn ghost sm" data-action="del-job" data-id="${j.id}">Delete</button></td>
+    </tr>`).join("") : `<tr><td colspan="9" class="empty">No jobs yet — add your first one below.</td></tr>`;
+  const tot = DB.jobs.reduce((s,j)=>s+Number(j.value),0);
+  $("#jobsTotal").textContent = `${DB.jobs.length} jobs · ${money(tot)} total`;
+}
+
+/* ----- Reseals ----- */
+function renderReseals(){
+  const items = resealItems();
+  const body=$("#resealsBody");
+  body.innerHTML = items.length ? items.map(r=>{
+    const overdue = r.days<0;
+    const status = overdue ? `<span class="pill bad">${Math.abs(r.days)}d overdue</span>`
+      : r.days===0 ? `<span class="pill warn">Due today</span>`
+      : `<span class="pill warn">in ${r.days}d</span>`;
+    return `<tr>
+      <td>${esc(r.name)}</td>
+      <td class="muted">${esc(r.area||"—")}</td>
+      <td class="muted tnum">${fmtDate(r.date)}</td>
+      <td class="muted tnum">${r.resealMonths} mo</td>
+      <td class="tnum">${fmtDate(iso(r.due))}</td>
+      <td>${status}</td>
+      <td class="num"><button class="btn sm" data-action="reseal-done" data-id="${r.id}">Mark done</button></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="7" class="empty">Nothing due. As you log domestic jobs with a reseal interval, they'll appear here when it's time to rebook.</td></tr>`;
+}
+
+/* ----- Pipeline ----- */
+function renderPipeline(){
+  const rows = DB.pipeline.slice().sort((a,b)=>(Number(b.value)*b.likelihood)-(Number(a.value)*a.likelihood));
+  const body=$("#pipelineBody");
+  body.innerHTML = rows.length ? rows.map(p=>{
+    const w = Number(p.value)*Number(p.likelihood)/100;
+    return `<tr>
+      <td>${esc(p.name)}</td>
+      <td><span class="tag ${p.sector==='commercial'?'com':''}">${p.sector==='commercial'?'Commercial':'Domestic'}</span></td>
+      <td class="muted tnum">${fmtDate(p.expectedStart)}</td>
+      <td class="num">${money(p.value)}</td>
+      <td class="num">${p.likelihood}%</td>
+      <td class="num"><strong>${money(w)}</strong></td>
+      <td class="num"><button class="btn ghost sm" data-action="del-pipeline" data-id="${p.id}">Delete</button></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="7" class="empty">No pipeline yet — add potential jobs below.</td></tr>`;
+  const weighted = DB.pipeline.reduce((s,p)=>s+Number(p.value)*Number(p.likelihood)/100,0);
+  const gross = DB.pipeline.reduce((s,p)=>s+Number(p.value),0);
+  $("#pipeWeighted").textContent = `${money(gross)} gross · ${money(weighted)} weighted`;
+}
+
+/* ----- Invoices ----- */
+function renderInvoices(){
+  const rows = DB.invoices.slice().sort((a,b)=>{
+    const rank=i=>({overdue:0,due:1,paid:2}[invoiceState(i)]); const r=rank(a)-rank(b);
+    return r!==0?r:a.due.localeCompare(b.due);
+  });
+  const body=$("#invoicesBody");
+  body.innerHTML = rows.length ? rows.map(inv=>{
+    const st=invoiceState(inv);
+    const pill = st==="paid"?'<span class="pill good">Paid</span>'
+      : st==="overdue"?`<span class="pill bad">Overdue</span>`
+      : '<span class="pill warn">Due</span>';
+    const act = inv.paid
+      ? `<button class="btn ghost sm" data-action="unpay" data-id="${inv.id}">Unmark</button>`
+      : `<button class="btn sm" data-action="pay" data-id="${inv.id}">Mark paid</button>`;
+    return `<tr>
+      <td>${esc(inv.client)}</td>
+      <td class="muted tnum">${fmtDate(inv.raised)}</td>
+      <td class="muted tnum">${fmtDate(inv.due)}</td>
+      <td class="num">${money(inv.amount)}</td>
+      <td>${pill}</td>
+      <td class="num">${act} <button class="btn ghost sm danger" data-action="del-invoice" data-id="${inv.id}">✕</button></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">No invoices yet.</td></tr>`;
+  $("#invTotals").textContent = `${money(outstanding())} outstanding · ${money(overdueTotal())} overdue`;
+}
+
+/* ----- Suppliers ----- */
+function renderSuppliers(){
+  // cheapest price per product name
+  const cheapest={};
+  DB.suppliers.forEach(s=>{ const k=s.product.toLowerCase(); if(cheapest[k]==null||Number(s.pricePerUnit)<cheapest[k]) cheapest[k]=Number(s.pricePerUnit); });
+  const rows = DB.suppliers.slice().sort((a,b)=> a.product.localeCompare(b.product) || Number(a.pricePerUnit)-Number(b.pricePerUnit));
+  const body=$("#suppliersBody");
+  body.innerHTML = rows.length ? rows.map(s=>{
+    const best = Number(s.pricePerUnit)===cheapest[s.product.toLowerCase()];
+    const lowStock = Number(s.stock)<=5;
+    return `<tr>
+      <td>${esc(s.product)} ${best?'<span class="pill good">cheapest</span>':''}</td>
+      <td class="muted">${esc(s.brand||"—")}</td>
+      <td class="muted">${esc(s.supplier||"—")}</td>
+      <td class="num"><strong>${money2(s.pricePerUnit)}</strong></td>
+      <td class="muted">${esc(s.unit||"")}</td>
+      <td class="num">${lowStock?`<span class="pill warn">${s.stock}</span>`:`<span class="tnum">${s.stock}</span>`}</td>
+      <td class="num"><button class="btn ghost sm" data-action="del-supplier" data-id="${s.id}">Delete</button></td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="7" class="empty">No products yet — add suppliers below to compare prices.</td></tr>`;
+}
+
+/* ----- Competitors ----- */
+function renderCompetitors(){
+  const body=$("#competitorsBody");
+  const rows=DB.competitors;
+  body.innerHTML = rows.length ? rows.map(c=>`
+    <tr>
+      <td>${esc(c.name)}</td>
+      <td class="num">${c.dayRate?money(c.dayRate):"—"}</td>
+      <td class="num">${c.pricePerMetre?money2(c.pricePerMetre):"—"}</td>
+      <td class="num">${c.leadTimeDays?c.leadTimeDays+"d":"—"}</td>
+      <td class="num">${c.reviewCount||"—"}</td>
+      <td class="num">${c.rating?"★ "+Number(c.rating).toFixed(1):"—"}</td>
+      <td class="num"><button class="btn ghost sm" data-action="del-competitor" data-id="${c.id}">Delete</button></td>
+    </tr>`).join("") : `<tr><td colspan="7" class="empty">No competitors logged yet.</td></tr>`;
+}
+
+/* ----- Reviews ----- */
+function renderReviews(){
+  const got = DB.jobs.filter(j=>j.reviewReceived).length;
+  const asked = DB.jobs.filter(j=>j.reviewRequested && !j.reviewReceived).length;
+  const need = reviewNeeded();
+  $("#reviewKpis").innerHTML = `
+    ${kpi("Google rating", (DB.settings.googleRating||0).toFixed(1)+" ★", (DB.settings.googleReviews||0)+" reviews", true)}
+    ${kpi("Reviews received", String(got), "from logged jobs")}
+    ${kpi("Asked, awaiting", String(asked), "follow up if stale")}
+    ${kpi("To request", String(need.length), "recent domestic jobs")}
+  `;
+  $("#reviewSettingsForm").googleRating.value = DB.settings.googleRating ?? "";
+  $("#reviewSettingsForm").googleReviews.value = DB.settings.googleReviews ?? "";
+
+  const body=$("#reviewJobsBody");
+  body.innerHTML = need.length ? need.map(j=>`
+    <tr>
+      <td>${esc(j.name)}</td>
+      <td class="muted">${esc(j.area||"—")}</td>
+      <td class="muted tnum">${fmtDate(j.date)}</td>
+      <td><span class="pill neutral">Not asked</span></td>
+      <td class="num">
+        <button class="btn sm" data-action="rev-asked" data-id="${j.id}">Mark asked</button>
+        <button class="btn sm primary" data-action="rev-got" data-id="${j.id}">Got it ★</button>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="5" class="empty">No recent domestic jobs waiting on a review request. Nice.</td></tr>`;
+}
+
+/* ----- Gallery ----- */
+function renderGallery(){
+  const grid=$("#galleryGrid");
+  if(!DB.photos.length){ grid.innerHTML=`<div class="empty">No photos yet — add before/after links below.</div>`; return; }
+  grid.innerHTML = DB.photos.slice().reverse().map(p=>`
+    <div class="gal-card">
+      <div class="gal-imgs">
+        <figure>${p.beforeUrl?`<img src="${esc(p.beforeUrl)}" alt="before" loading="lazy">`:`<div class="ph">no image</div>`}<figcaption>Before</figcaption></figure>
+        <figure>${p.afterUrl?`<img src="${esc(p.afterUrl)}" alt="after" loading="lazy">`:`<div class="ph">no image</div>`}<figcaption>After</figcaption></figure>
+      </div>
+      <div class="gal-meta">
+        <div class="t">${esc(p.jobName)}</div>
+        ${p.caption?`<div class="c">${esc(p.caption)}</div>`:""}
+        <div style="margin-top:8px"><button class="btn ghost sm danger" data-action="del-photo" data-id="${p.id}">Delete</button></div>
+      </div>
+    </div>`).join("");
+}
+
+/* ============================================================
+   Weather (Open-Meteo, no API key)
+   ============================================================ */
+const WX_CODES={0:"Clear",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",66:"Freezing rain",67:"Freezing rain",71:"Light snow",73:"Snow",75:"Heavy snow",80:"Showers",81:"Showers",82:"Heavy showers",85:"Snow showers",86:"Snow showers",95:"Thunderstorm",96:"Thunderstorm",99:"Thunderstorm"};
+function classifyDay(tmax,prob,sum){
+  if(tmax<5 || prob>=60 || sum>=2)  return {cls:"bad", lab:"Poor", why: tmax<5?"too cold":"rain likely"};
+  if(tmax<8 || prob>=30 || sum>=0.5) return {cls:"warn",lab:"Marginal", why: tmax<8?"chilly":"showers possible"};
+  return {cls:"good",lab:"Good", why:"dry enough"};
+}
+async function fetchForecast(name){
+  const g = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&country=GB&language=en&format=json`);
+  const gj = await g.json();
+  if(!gj.results || !gj.results.length) throw new Error("Couldn't find that place");
+  const {latitude,longitude,name:rn,admin1}=gj.results[0];
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Europe%2FLondon&forecast_days=6`;
+  const w=await fetch(u); const wj=await w.json();
+  return {rn,admin1,daily:wj.daily};
+}
+function renderWeatherShell(){
+  const grid=$("#weatherGrid");
+  if(!DB.weatherLocations.length){ grid.innerHTML=`<div class="empty">Add a town above to see a 6-day application forecast.</div>`; return; }
+  grid.innerHTML = DB.weatherLocations.map(loc=>`
+    <div class="wx-card" id="wx-${loc.id}">
+      <div class="wx-head"><strong>${esc(loc.name)}</strong><span class="spacer" style="flex:1"></span>
+        <button class="btn ghost sm danger" data-action="del-weather" data-id="${loc.id}">✕</button></div>
+      <div class="wx-loading">Loading forecast…</div>
+    </div>`).join("");
+  DB.weatherLocations.forEach(loadWeatherCard);
+}
+async function loadWeatherCard(loc){
+  const card=document.getElementById("wx-"+loc.id); if(!card) return;
+  const slot=card.querySelector(".wx-loading, .wx-error, .wx-days");
+  try{
+    const f=await fetchForecast(loc.name);
+    const d=f.daily;
+    const rows=d.time.map((t,i)=>{
+      const tmax=Math.round(d.temperature_2m_max[i]), tmin=Math.round(d.temperature_2m_min[i]);
+      const prob=d.precipitation_probability_max[i]??0, sum=d.precipitation_sum[i]??0;
+      const c=classifyDay(d.temperature_2m_max[i],prob,sum);
+      const day=new Date(t+"T00:00:00").toLocaleDateString("en-GB",{weekday:"short"});
+      const cond=WX_CODES[d.weather_code[i]]||"";
+      return `<div class="wx-day">
+        <span class="d">${day}</span>
+        <span class="meta">${tmax}° / ${tmin}° · ${cond} · ${prob}% rain</span>
+        <span class="pill ${c.cls}" title="${c.why}">${c.lab}</span>
+      </div>`;
+    }).join("");
+    if(slot) slot.outerHTML=`<div class="wx-days">${rows}</div>`;
+  }catch(err){
+    if(slot) slot.outerHTML=`<div class="wx-error">${esc(err.message||"Couldn't load forecast")}. <button class="btn ghost sm" data-action="retry-weather" data-id="${loc.id}">Retry</button></div>`;
+  }
+}
+
+/* ============================================================
+   Navigation
+   ============================================================ */
+const VIEWS=["overview","jobs","reseals","pipeline","planning","outreach","invoices","suppliers","competition","reviews","weather","gallery"];
+function navTo(view){
+  if(!VIEWS.includes(view)) return;
+  VIEWS.forEach(v=>{ const s=document.getElementById("view-"+v); if(s) s.classList.toggle("active", v===view); });
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active", b.dataset.nav===view));
+  if(view==="weather") renderWeatherShell();
+  if(view==="outreach"){ renderProspects(); setTimeout(()=>{ if(prospectMap) prospectMap.invalidateSize(); },60); }
+  window.scrollTo({top:0,behavior:"auto"});
+}
+
+/* ============================================================
+   Actions (event delegation)
+   ============================================================ */
+document.addEventListener("click", e=>{
+  const navEl=e.target.closest("[data-nav]");
+  if(navEl){ e.preventDefault(); navTo(navEl.dataset.nav); return; }
+  const el=e.target.closest("[data-action]"); if(!el) return;
+  const {action,id}=el.dataset;
+  switch(action){
+    case "del-job": removeFrom("jobs",id); break;
+    case "del-pipeline": removeFrom("pipeline",id); break;
+    case "del-invoice": removeFrom("invoices",id); break;
+    case "del-supplier": removeFrom("suppliers",id); break;
+    case "del-competitor": removeFrom("competitors",id); break;
+    case "del-photo": removeFrom("photos",id); break;
+    case "del-weather": removeFrom("weatherLocations",id); renderWeatherShell(); break;
+    case "retry-weather": { const loc=DB.weatherLocations.find(l=>l.id===id); if(loc) loadWeatherCard(loc); break; }
+    case "pay": setInvoice(id,true); break;
+    case "unpay": setInvoice(id,false); break;
+    case "reseal-done": markResealDone(id); break;
+    case "rev-asked": setReview(id,{reviewRequested:true}); break;
+    case "rev-got": setReview(id,{reviewRequested:true,reviewReceived:true}); break;
+    case "export": exportData(); break;
+    case "import": $("#importFile").click(); break;
+    case "reset": resetData(); break;
+  }
+});
+function removeFrom(key,id){ DB[key]=DB[key].filter(x=>x.id!==id); save(); renderAll(); }
+function setInvoice(id,paid){ const i=DB.invoices.find(x=>x.id===id); if(i){ i.paid=paid; save(); renderInvoices(); renderOverview(); renderCounts(); } }
+function markResealDone(id){ const j=DB.jobs.find(x=>x.id===id); if(j){ j.date=iso(today0()); save(); renderAll(); } }
+function setReview(id,patch){ const j=DB.jobs.find(x=>x.id===id); if(j){ Object.assign(j,patch); save(); renderJobs(); renderReviews(); renderCounts(); } }
+
+/* ---------- form submissions ---------- */
+function fd(form){ const o={}; new FormData(form).forEach((v,k)=>o[k]=v); return o; }
+
+$("#jobForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.jobs.push({id:uid(),name:d.name.trim(),area:d.area.trim(),type:d.type,sector:d.sector,
+    leadSource:d.leadSource,value:+d.value||0,date:d.date,resealMonths:+d.resealMonths||0,
+    reviewRequested:false,reviewReceived:false});
+  save(); e.target.reset(); e.target.date.value=iso(today0()); e.target.resealMonths.value=36; renderAll();
+});
+$("#pipelineForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.pipeline.push({id:uid(),name:d.name.trim(),sector:d.sector,value:+d.value||0,
+    likelihood:Math.min(100,Math.max(0,+d.likelihood||0)),expectedStart:d.expectedStart||""});
+  save(); e.target.reset(); renderPipeline(); renderOverview(); renderCounts();
+});
+$("#invoiceForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.invoices.push({id:uid(),client:d.client.trim(),amount:+d.amount||0,raised:d.raised,due:d.due,paid:false});
+  save(); e.target.reset(); e.target.raised.value=iso(today0()); renderInvoices(); renderOverview(); renderCounts();
+});
+$("#supplierForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.suppliers.push({id:uid(),product:d.product.trim(),brand:d.brand.trim(),supplier:d.supplier.trim(),
+    pricePerUnit:+d.pricePerUnit||0,unit:d.unit.trim(),stock:+d.stock||0});
+  save(); e.target.reset(); e.target.unit.value="per 310ml"; e.target.stock.value=0; renderSuppliers(); renderCounts(); renderOverview();
+});
+$("#competitorForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.competitors.push({id:uid(),name:d.name.trim(),dayRate:+d.dayRate||0,pricePerMetre:+d.pricePerMetre||0,
+    leadTimeDays:+d.leadTimeDays||0,reviewCount:+d.reviewCount||0,rating:+d.rating||0});
+  save(); e.target.reset(); renderCompetitors(); renderCounts();
+});
+$("#reviewSettingsForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.settings.googleRating=+d.googleRating||0; DB.settings.googleReviews=+d.googleReviews||0;
+  save(); renderReviews(); renderOverview();
+});
+$("#weatherForm").addEventListener("submit",e=>{
+  e.preventDefault(); const name=e.target.name.value.trim(); if(!name) return;
+  DB.weatherLocations.push({id:uid(),name}); save(); e.target.reset(); renderWeatherShell();
+});
+$("#photoForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.photos.push({id:uid(),jobName:d.jobName.trim(),beforeUrl:d.beforeUrl.trim(),afterUrl:d.afterUrl.trim(),
+    caption:d.caption.trim(),date:iso(today0())});
+  save(); e.target.reset(); renderGallery(); renderCounts();
+});
+
+/* ---------- backup / restore / reset ---------- */
+function exportData(){
+  const blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=`masticworks-backup-${iso(today0())}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+$("#importFile").addEventListener("change",e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const obj=JSON.parse(r.result);
+      if(!obj.jobs) throw new Error("bad file");
+      DB=obj; if(!DB.settings) DB.settings={googleRating:0,googleReviews:0};
+      save(); renderAll(); navTo("overview");
+    }catch(err){ alert("That doesn't look like a valid backup file."); } };
+  r.readAsText(file); e.target.value="";
+});
+function resetData(){
+  if(confirm("Reset everything back to the sample data? Your current entries will be lost.")){
+    seed(); save(); renderAll(); navTo("overview");
+  }
+}
+
+/* ============================================================
+   Prospects (outreach) + Planning leads
+   ============================================================ */
+const CATEGORIES = ["Hotels & B&Bs","Holiday parks","Care homes","Pubs & bars","Restaurants & cafés","Leisure & gyms","Schools & public buildings","Offices & retail","Developers & agents","Other"];
+const PSTATUS = ["To contact","Contacted","Quoted","Won","Not now"];
+const LEAD_STATUS = ["Spotted","Contacted","Quoted","Won","Dead"];
+let prospectFilter = "All";
+let prospectQuery = "";
+let prospectMap = null, prospectMarkers = null;
+
+function visibleProspects(){
+  const q = prospectQuery.trim().toLowerCase();
+  return DB.prospects.filter(p=>
+    (prospectFilter==="All" || p.category===prospectFilter) &&
+    (!q || (p.name+" "+(p.area||"")).toLowerCase().includes(q))
+  );
+}
+function renderProspects(){
+  const counts = {};
+  DB.prospects.forEach(p=>counts[p.category]=(counts[p.category]||0)+1);
+  const chips = ['<button class="chip '+(prospectFilter==="All"?"active":"")+'" data-pfilter="All">All <span class="n">'+DB.prospects.length+'</span></button>']
+    .concat(CATEGORIES.filter(c=>counts[c]).map(c=>'<button class="chip '+(prospectFilter===c?"active":"")+'" data-pfilter="'+esc(c)+'">'+esc(c)+' <span class="n">'+counts[c]+'</span></button>'));
+  $("#prospectChips").innerHTML = chips.join("");
+
+  const list = visibleProspects();
+  $("#prospectHeading").textContent = prospectFilter==="All" ? "All prospects" : prospectFilter;
+  $("#prospectCount").textContent = list.length + (list.length===1?" business":" businesses");
+
+  const body = $("#prospectBody");
+  body.innerHTML = list.length ? list.map(p=>{
+    const tel = p.phone ? '<a href="tel:'+esc(p.phone.replace(/\s/g,""))+'">'+esc(p.phone)+'</a>' : '<span class="muted">—</span>';
+    return '<tr>'+
+      '<td><strong>'+esc(p.name)+'</strong>'+(p.rating?' <span class="muted">★ '+Number(p.rating).toFixed(1)+'</span>':'')+(p.website?' · <a href="'+esc(p.website)+'" target="_blank" rel="noopener" class="linkbtn">web</a>':'')+'</td>'+
+      '<td><span class="tag">'+esc(p.category)+'</span></td>'+
+      '<td class="muted">'+esc(p.area||"—")+'</td>'+
+      '<td>'+tel+'</td>'+
+      '<td><input class="inp-mini" data-pemail="'+p.id+'" value="'+esc(p.email||"")+'" placeholder="add email"></td>'+
+      '<td><select class="inp-mini pstatus" data-v="'+esc(p.status)+'" data-pstatus="'+p.id+'">'+PSTATUS.map(s=>'<option'+(s===p.status?" selected":"")+'>'+s+'</option>').join("")+'</select></td>'+
+      '<td class="num" style="white-space:nowrap"><button class="btn sm primary" data-pemailbtn="'+p.id+'">Email</button> <button class="btn ghost sm danger" data-pdel="'+p.id+'">✕</button></td>'+
+    '</tr>';
+  }).join("") : '<tr><td colspan="7" class="empty">No prospects in this view. Add one below or pick another type.</td></tr>';
+
+  renderProspectMap(list);
+}
+function renderProspectMap(list){
+  const wrap = $("#prospectMapWrap");
+  if(typeof L === "undefined"){ wrap.innerHTML = '<div class="map-note">Map needs an internet connection to load. The list below still works.</div>'; return; }
+  const sec = document.getElementById("view-outreach");
+  const active = sec && sec.classList.contains("active");
+  if(!active && !prospectMap) return; // build lazily when the section is first opened
+  if(!prospectMap){
+    wrap.innerHTML = '<div id="prospectMap"></div>';
+    prospectMap = L.map("prospectMap",{scrollWheelZoom:false}).setView([50.546,-3.498],10);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(prospectMap);
+    prospectMarkers = L.layerGroup().addTo(prospectMap);
+  }
+  prospectMarkers.clearLayers();
+  const pts = [];
+  list.forEach(p=>{
+    if(typeof p.lat!=="number"||typeof p.lng!=="number") return;
+    const m = L.marker([p.lat,p.lng]);
+    const tel = p.phone ? '<br><a href="tel:'+esc(p.phone.replace(/\s/g,""))+'">'+esc(p.phone)+'</a>' : '';
+    m.bindPopup('<strong>'+esc(p.name)+'</strong><br><span style="color:#5a6772">'+esc(p.category)+' · '+esc(p.area||"")+'</span>'+tel);
+    prospectMarkers.addLayer(m); pts.push([p.lat,p.lng]);
+  });
+  if(pts.length){ try{ prospectMap.fitBounds(pts,{padding:[30,30],maxZoom:13}); }catch(e){} }
+}
+
+/* ---- branded intro emails ---- */
+function emailTemplate(cat, name){
+  const s = DB.settings;
+  const who = s.senderContact ? s.senderContact : "the team";
+  const sign = [ s.senderContact||"", "Trimseal — Sealant & Mastic Specialists", [s.senderPhone, s.senderEmail, s.senderWebsite].filter(Boolean).join("  ·  ") ].filter(Boolean).join("\n");
+  const intro = {
+    "Hotels & B&Bs":"I work with hotels and guest houses across "+(s.baseArea||"the area")+" keeping bathrooms and wet rooms watertight and mould-free — silicone reseals, shower trays, and joints around baths and windows.",
+    "Holiday parks":"I look after holiday parks in "+(s.baseArea||"the area")+" with sealant work across caravans and lodges — bathrooms, shower pods, kitchens and exterior joints — and can turn round multiple units between lets.",
+    "Care homes":"I carry out hygiene-critical sealant work for care homes — wet rooms, assisted bathrooms and kitchens — to a clean, mould-resistant finish with minimal disruption to residents.",
+    "Pubs & bars":"I handle sealant work for pubs and bars — cellars, kitchens, customer washrooms and bar areas — keeping everything sealed, hygienic and compliant.",
+    "Restaurants & cafés":"I do commercial kitchen and washroom sealant work for restaurants and cafés — hygienic joints around sinks and splashbacks, and customer toilets.",
+    "Leisure & gyms":"I specialise in sealant for leisure facilities — changing rooms, showers, pool surrounds and wet areas — where a durable, mould-resistant finish really matters."
+  }[cat] || "I provide professional mastic and sealant work for commercial premises across "+(s.baseArea||"the area")+" — bathrooms, kitchens, wet areas, windows and movement joints.";
+  return {
+    subject: "Sealant & mastic work for "+name,
+    body: "Hi,\n\nMy name is "+who+" from Trimseal. "+intro+"\n\nIf you've any reseals or sealant work coming up — or just want tired, discoloured silicone freshened up — I'd be glad to take a look and give you a no-obligation quote.\n\nKind regards,\n"+sign
+  };
+}
+function composeEmail(p){
+  const t = emailTemplate(p.category, p.name);
+  const to = p.email ? encodeURIComponent(p.email) : "";
+  window.location.href = "mailto:"+to+"?subject="+encodeURIComponent(t.subject)+"&body="+encodeURIComponent(t.body);
+}
+
+/* ---- planning leads board ---- */
+function renderPlanningLeads(){
+  const rows = DB.planningLeads.slice().reverse();
+  const body = $("#planningLeadsBody");
+  body.innerHTML = rows.length ? rows.map(l=>(
+    '<tr>'+
+      '<td>'+(l.link?'<a href="'+esc(l.link)+'" target="_blank" rel="noopener">'+esc(l.address)+'</a>':esc(l.address))+(l.desc?'<div class="muted" style="font-size:11.5px;margin-top:2px">'+esc(l.desc.slice(0,120))+(l.desc.length>120?"…":"")+'</div>':'')+'</td>'+
+      '<td class="muted">'+esc(l.authority||"—")+'</td>'+
+      '<td class="muted">'+esc(l.type||"—")+'</td>'+
+      '<td><select class="inp-mini pstatus" data-v="'+esc(l.status||"Spotted")+'" data-leadstatus="'+l.id+'">'+LEAD_STATUS.map(s=>'<option'+(s===(l.status||"Spotted")?" selected":"")+'>'+s+'</option>').join("")+'</select></td>'+
+      '<td class="muted tnum">'+fmtDate(l.date)+'</td>'+
+      '<td class="num"><button class="btn ghost sm danger" data-leaddel="'+l.id+'">Delete</button></td>'+
+    '</tr>'
+  )).join("") : '<tr><td colspan="6" class="empty">No leads saved yet. Search above and click “Save as lead”, or add one manually.</td></tr>';
+  $("#leadsCount").textContent = DB.planningLeads.length + (DB.planningLeads.length===1?" lead":" leads");
+}
+
+/* ---- live planning search via PlanIt (JSONP sidesteps CORS) ---- */
+let lastPlanning = [];
+function jsonp(url){
+  return new Promise((resolve,reject)=>{
+    const cb = "__planit_"+Date.now().toString(36)+Math.floor(Math.random()*1e4);
+    const sc = document.createElement("script");
+    let done=false;
+    const clean=()=>{ try{ delete window[cb]; }catch(e){ window[cb]=undefined; } if(sc.parentNode) sc.parentNode.removeChild(sc); };
+    const timer=setTimeout(()=>{ if(!done){ done=true; clean(); reject(new Error("The planning service took too long to respond.")); } }, 18000);
+    window[cb]=d=>{ if(done) return; done=true; clearTimeout(timer); clean(); resolve(d); };
+    sc.onerror=()=>{ if(!done){ done=true; clearTimeout(timer); clean(); reject(new Error("Couldn't reach the planning service.")); } };
+    sc.src = url + (url.indexOf("?")>=0?"&":"?") + "callback="+cb;
+    document.head.appendChild(sc);
+  });
+}
+async function runPlanningSearch(opts){
+  const out = $("#planningResults");
+  out.innerHTML = '<div class="plan-results-head"><span class="spin"></span>Searching planning applications…</div>';
+  const p = new URLSearchParams();
+  if(opts.pcode){ p.set("pcode", opts.pcode); p.set("krad", opts.krad||"5"); }
+  else { p.set("auth", opts.auth); }
+  p.set("recent", opts.recent||"90");
+  if(opts.search) p.set("search", opts.search);
+  p.set("pg_sz","60"); p.set("compress","on");
+  p.set("select","name,address,description,app_type,app_size,app_state,authority_name,start_date,link,source_url,lat,lng");
+  p.set("sort","-start_date");
+  const url = "https://www.planit.org.uk/api/applics/json?" + p.toString();
+  try{
+    const data = await jsonp(url);
+    const recs = (data && data.records) || [];
+    lastPlanning = recs;
+    if(!recs.length){ out.innerHTML = '<div class="map-note">No applications found for that search. Try a longer time window, a different council, or clear the keyword.</div>'; return; }
+    const total = data.total || recs.length;
+    out.innerHTML = '<div class="plan-results-head">Showing '+recs.length+' of '+total+' applications, newest first.</div>' +
+      recs.map((r,i)=>{
+        const big = String(r.app_size||"").toLowerCase()==="large";
+        const desc = r.description ? esc(r.description.slice(0,260))+(r.description.length>260?"…":"") : '<span class="muted">No description provided.</span>';
+        const link = r.source_url || r.link || "";
+        return '<div class="plan-card">'+
+          '<div class="pc-top">'+
+            (r.app_size||r.app_type?'<span class="badge'+(big?" lg":"")+'">'+esc(r.app_size||r.app_type)+'</span>':'')+
+            '<span class="pc-addr">'+esc(r.address||r.name||"Application")+'</span>'+
+          '</div>'+
+          '<div class="pc-desc">'+desc+'</div>'+
+          '<div class="pc-meta">'+
+            (r.authority_name?'<span>'+esc(r.authority_name)+'</span>':'')+
+            (r.start_date?'<span>'+fmtDate(String(r.start_date).slice(0,10))+'</span>':'')+
+            (r.app_state?'<span class="pill neutral">'+esc(r.app_state)+'</span>':'')+
+            (link?'<a class="linkbtn" href="'+esc(link)+'" target="_blank" rel="noopener">View application →</a>':'')+
+            '<button class="btn sm" data-savelead="'+i+'">Save as lead</button>'+
+          '</div>'+
+        '</div>';
+      }).join("");
+  }catch(err){
+    out.innerHTML = '<div class="map-note" style="border-color:var(--bad);color:var(--bad)">'+esc(err.message||"Search failed.")+' If this keeps happening, use the PlanIt link below.</div>';
+  }
+}
+
+/* ---- inline edits (status / email) ---- */
+document.addEventListener("change", e=>{
+  const t = e.target;
+  if(t.dataset.pstatus){ const p=DB.prospects.find(x=>x.id===t.dataset.pstatus); if(p){ p.status=t.value; save(); t.setAttribute("data-v",t.value); renderCounts(); } }
+  else if(t.dataset.pemail){ const p=DB.prospects.find(x=>x.id===t.dataset.pemail); if(p){ p.email=t.value.trim(); save(); } }
+  else if(t.dataset.leadstatus){ const l=DB.planningLeads.find(x=>x.id===t.dataset.leadstatus); if(l){ l.status=t.value; save(); t.setAttribute("data-v",t.value); } }
+});
+const _psearch = $("#prospectSearch"); if(_psearch) _psearch.addEventListener("input", e=>{ prospectQuery=e.target.value; renderProspects(); });
+
+/* ---- clicks for the new actions ---- */
+document.addEventListener("click", e=>{
+  const chip = e.target.closest("[data-pfilter]");
+  if(chip){ prospectFilter=chip.dataset.pfilter; renderProspects(); return; }
+  const el = e.target.closest("[data-pemailbtn],[data-pdel],[data-savelead],[data-leaddel]");
+  if(!el) return;
+  if(el.dataset.pemailbtn){ const p=DB.prospects.find(x=>x.id===el.dataset.pemailbtn); if(p) composeEmail(p); }
+  else if(el.dataset.pdel){ DB.prospects=DB.prospects.filter(x=>x.id!==el.dataset.pdel); save(); renderProspects(); renderCounts(); }
+  else if(el.dataset.savelead){ const r=lastPlanning[+el.dataset.savelead]; if(r){ DB.planningLeads.push({id:uid(),address:r.address||r.name||"Application",authority:r.authority_name||"",type:[r.app_size,r.app_type].filter(Boolean).join(" / "),desc:r.description||"",link:r.source_url||r.link||"",status:"Spotted",date:iso(today0())}); save(); renderPlanningLeads(); renderCounts(); el.textContent="Saved ✓"; el.disabled=true; } }
+  else if(el.dataset.leaddel){ DB.planningLeads=DB.planningLeads.filter(x=>x.id!==el.dataset.leaddel); save(); renderPlanningLeads(); renderCounts(); }
+});
+
+/* ---- form binds ---- */
+$("#senderForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  Object.assign(DB.settings,{senderContact:d.senderContact.trim(),senderPhone:d.senderPhone.trim(),senderEmail:d.senderEmail.trim(),senderWebsite:d.senderWebsite.trim()});
+  save(); const b=e.target.querySelector("button"); b.textContent="Saved ✓"; setTimeout(()=>{ b.textContent="Save"; },1500);
+});
+$("#prospectForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.prospects.push({id:uid(),name:d.name.trim(),category:d.category,area:d.area.trim(),phone:d.phone.trim(),email:d.email.trim(),website:"",rating:0,lat:null,lng:null,status:"To contact",notes:""});
+  save(); e.target.reset(); renderProspects(); renderCounts();
+});
+$("#planningLeadForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  DB.planningLeads.push({id:uid(),address:d.address.trim(),authority:d.authority.trim(),type:d.type.trim(),link:d.link.trim(),desc:"",status:"Spotted",date:iso(today0())});
+  save(); e.target.reset(); renderPlanningLeads(); renderCounts();
+});
+$("#planningForm").addEventListener("submit",e=>{
+  e.preventDefault(); const d=fd(e.target);
+  runPlanningSearch({auth:d.auth, search:d.search.trim(), recent:d.recent, pcode:d.pcode.trim(), krad:d.krad});
+});
+
+/* ---------- init ---------- */
+load();
+// default dates on forms
+$("#jobForm").date.value = iso(today0());
+$("#invoiceForm").raised.value = iso(today0());
+(function(){ const f=$("#senderForm"); if(f){ f.senderContact.value=DB.settings.senderContact||""; f.senderPhone.value=DB.settings.senderPhone||""; f.senderEmail.value=DB.settings.senderEmail||""; f.senderWebsite.value=DB.settings.senderWebsite||""; } })();
+renderAll();
+</script>
+</body>
+</html>
